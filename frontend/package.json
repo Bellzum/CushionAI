@@ -1,0 +1,14 @@
+{
+  "name": "cushionai-frontend",
+  "private": true,
+  "scripts": {
+    "start": "vite --open"
+  },
+  "dependencies": {
+    "livekit-client": "^2.1.0",
+    "mermaid": "^10.9.1"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
