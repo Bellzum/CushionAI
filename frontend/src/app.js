@@ -17,6 +17,7 @@ class CushionVoiceAgent {
     this.hasRemoteAudio = false;
     this.lastAssistantText = "";
     this.lastAssistantTimestamp = 0;
+    this.lastFlowchartSourceText = "";
 
     this.statusEl = document.getElementById("status");
     this.logEl = document.getElementById("log");
@@ -26,6 +27,7 @@ class CushionVoiceAgent {
     this.requestStatusBtn = document.getElementById("request-status");
     this.notifyLoadedBtn = document.getElementById("notify-loaded");
     this.clearLogBtn = document.getElementById("clear-log");
+    this.generateFlowchartBtn = document.getElementById("generate-flowchart");
 
     this.avatarEl = document.getElementById("avatar");
     this.avatarStatusEl = document.getElementById("avatar-status");
@@ -45,6 +47,7 @@ class CushionVoiceAgent {
     this.requestStatusBtn.addEventListener("click", () => this.sendClientAction("manager_requested_status", { source: "dashboard" }));
     this.notifyLoadedBtn.addEventListener("click", () => this.sendClientAction("dashboard_loaded", { source: "frontend", behavior: "notify" }));
     this.clearLogBtn.addEventListener("click", () => this.clearPanels());
+    this.generateFlowchartBtn.addEventListener("click", () => this.generateFlowchartFromLatestResponse());
 
     this.setupEventHandlers();
     this.updateUI();
@@ -53,17 +56,12 @@ class CushionVoiceAgent {
   }
 
   async loadAvatar() {
-    const localCat = "/cat4.png";
-    this.avatarEl.src = localCat;
+    const fallbackAvatar = this.buildFallbackAvatar();
+    this.avatarEl.src = fallbackAvatar;
 
     this.avatarEl.onerror = () => {
-      // local file missing, use inline placeholder.
       this.avatarEl.onerror = null;
-      this.avatarEl.src = "data:image/svg+xml;base64," + btoa(`
-        <svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'>
-          <rect width='100%' height='100%' fill='#1e293b'/>
-          <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#38bdf8' font-size='16'>cat4.png</text>
-        </svg>`);
+      this.avatarEl.src = fallbackAvatar;
     };
 
     try {
@@ -75,6 +73,32 @@ class CushionVoiceAgent {
     } catch (err) {
       console.warn("Avatar backend unavailable, using local art.", err);
     }
+  }
+
+  buildFallbackAvatar() {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+        <defs>
+          <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#10243b" />
+            <stop offset="100%" stop-color="#0d5ea8" />
+          </linearGradient>
+          <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#63d0ff" />
+            <stop offset="100%" stop-color="#5dd39e" />
+          </linearGradient>
+        </defs>
+        <rect width="256" height="256" rx="72" fill="url(#bg)" />
+        <rect x="12" y="12" width="232" height="232" rx="60" fill="none" stroke="url(#ring)" stroke-width="6" opacity="0.9" />
+        <circle cx="128" cy="102" r="46" fill="#d7ecff" />
+        <path d="M72 185c14-28 39-42 56-42s42 14 56 42" fill="#d7ecff" />
+        <circle cx="112" cy="96" r="6" fill="#0a1a2d" />
+        <circle cx="144" cy="96" r="6" fill="#0a1a2d" />
+        <path d="M118 116c8 7 12 7 20 0" stroke="#0a1a2d" stroke-width="5" stroke-linecap="round" fill="none" />
+        <text x="50%" y="222" text-anchor="middle" fill="#63d0ff" font-family="IBM Plex Sans, Arial, sans-serif" font-size="24" font-weight="700">CA</text>
+      </svg>`;
+
+    return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
   setStatus(text, level = "info") {
@@ -107,7 +131,7 @@ class CushionVoiceAgent {
     this.metricTranscriptEl.textContent = String(this.state.transcriptCount);
   }
 
-  handleAssistantOutput(data) {
+  async handleAssistantOutput(data) {
     if (!data || typeof data !== "object") return;
 
     if (data.text) {
@@ -117,17 +141,160 @@ class CushionVoiceAgent {
       this.speakText(data.text);
     }
 
-    if (data.mermaid) {
-      try {
-        const { svg } = mermaid.render("flowchart-svg", data.mermaid);
-        this.flowchartEl.classList.remove("empty");
-        this.flowchartEl.innerHTML = svg;
-      } catch (err) {
-        console.warn("Mermaid render failed", err);
-        this.flowchartEl.classList.remove("empty");
-        this.flowchartEl.textContent = "Unable to render Mermaid diagram for this response.";
+    const mermaidSource = data.mermaid || this.extractMermaidFromText(data.text);
+
+    if (mermaidSource) {
+      await this.renderFlowchart(mermaidSource);
+      return;
+    }
+
+    if (data.text) {
+      await this.generateFlowchartFromAssistantText(data.text);
+    }
+  }
+
+  async renderFlowchart(mermaidSource) {
+    try {
+      const { svg } = await mermaid.render(`flowchart-svg-${Date.now()}`, mermaidSource);
+      this.flowchartEl.classList.remove("empty");
+      this.flowchartEl.innerHTML = svg;
+    } catch (err) {
+      console.warn("Mermaid render failed", err);
+      this.flowchartEl.classList.remove("empty");
+      this.flowchartEl.textContent = "Unable to render Mermaid diagram for this response.";
+    }
+  }
+
+  async generateFlowchartFromAssistantText(text) {
+    const sourceText = String(text || "").trim();
+    if (!sourceText || sourceText === this.lastFlowchartSourceText) {
+      return;
+    }
+
+    const localMermaid = this.extractMermaidFromText(sourceText);
+    if (localMermaid) {
+      this.lastFlowchartSourceText = sourceText;
+      await this.renderFlowchart(localMermaid);
+      return;
+    }
+
+    this.lastFlowchartSourceText = sourceText;
+    this.flowchartEl.classList.remove("empty");
+    this.flowchartEl.textContent = "Generating flowchart from assistant response...";
+
+    try {
+      const response = await fetch("/api/flowchart", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ text: sourceText })
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Flowchart API failed: ${response.status}`;
+        try {
+          const errorBody = await response.json();
+          if (errorBody?.error) {
+            errorMessage = errorBody.error;
+          }
+        } catch (parseError) {
+          // Ignore JSON parse failures and keep the HTTP status message.
+        }
+        throw new Error(errorMessage);
+      }
+
+      const { mermaid: generatedMermaid } = await response.json();
+      if (generatedMermaid) {
+        await this.renderFlowchart(generatedMermaid);
+        return;
+      }
+
+      this.flowchartEl.classList.add("empty");
+      this.flowchartEl.textContent = "No flowchart could be derived from this response.";
+    } catch (error) {
+      console.error("generateFlowchartFromAssistantText error", error);
+      this.flowchartEl.classList.add("empty");
+      this.flowchartEl.textContent = `Flowchart generation failed: ${error?.message || "Unknown error"}`;
+    }
+  }
+
+  async generateFlowchartFromLatestResponse() {
+    const latestResponse = String(this.responseEl?.textContent || "").trim();
+    if (!latestResponse || latestResponse === "Assistant response will appear here.") {
+      this.log("No assistant response available for flowchart generation.", "warn");
+      return;
+    }
+
+    this.log("Generating flowchart from latest assistant response...");
+    this.state.lastAction = "Generate Flowchart";
+    this.updateMetrics();
+    this.lastFlowchartSourceText = "";
+    await this.generateFlowchartFromAssistantText(latestResponse);
+  }
+
+  extractMermaidFromText(text) {
+    const rawText = String(text || "").trim();
+    if (!rawText) return "";
+
+    const fencedMatch = rawText.match(/```mermaid\s*([\s\S]*?)```/i);
+    if (fencedMatch?.[1]) {
+      return fencedMatch[1].trim();
+    }
+
+    const normalized = rawText
+      .replace(/\*\*/g, "")
+      .replace(/[“”]/g, "\"")
+      .replace(/[‘’]/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!normalized.includes("->") && !normalized.includes("→")) {
+      return "";
+    }
+
+    const arrowMatches = normalized.match(/[^.?!\n]+(?:->|→)[^.?!\n]+/g) || [];
+    const candidate = arrowMatches.sort((a, b) => b.length - a.length)[0] || normalized;
+
+    const cleanedCandidate = candidate
+      .replace(/^[^A-Za-z0-9(]*/, "")
+      .replace(/\b(here'?s|here is|flow|process|basically|loop)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const parts = cleanedCandidate
+      .split(/(?:->|→)/)
+      .map((part) =>
+        part
+          .replace(/^[^A-Za-z0-9(]+|[^A-Za-z0-9)]*$/g, "")
+          .replace(/\b(and|then)\b$/gi, "")
+          .trim()
+      )
+      .filter(Boolean);
+
+    if (parts.length < 2) {
+      return "";
+    }
+
+    const uniqueParts = [];
+    for (const part of parts) {
+      const previous = uniqueParts[uniqueParts.length - 1];
+      if (!previous || previous.toLowerCase() !== part.toLowerCase()) {
+        uniqueParts.push(part);
       }
     }
+
+    if (uniqueParts.length < 2) {
+      return "";
+    }
+
+    const nodes = uniqueParts.map((part, index) => {
+      const label = part.replace(/"/g, "'");
+      return `N${index}["${label}"]`;
+    });
+
+    const edges = nodes.slice(0, -1).map((node, index) => `${node} --> ${nodes[index + 1]}`);
+    return `graph LR\n${edges.join("\n")}`;
   }
 
   speakText(text) {
@@ -196,6 +363,7 @@ class CushionVoiceAgent {
     this.sendBtn.disabled = loading || !connected;
     this.requestStatusBtn.disabled = loading || !connected;
     this.notifyLoadedBtn.disabled = loading || !connected;
+    this.generateFlowchartBtn.disabled = loading;
 
     if (loading) {
       this.setStatus("connecting...", "warn");
@@ -290,13 +458,7 @@ class CushionVoiceAgent {
 
           this.addScriptEntry(speaker, msg.payload.text);
           if (speaker === "assistant") {
-            if (!this.hasRemoteAudio) {
-              this.handleAssistantOutput({ text: msg.payload.text });
-            } else {
-              this.responseEl.classList.remove("empty");
-              this.responseEl.textContent = msg.payload.text;
-              this.setAvatarState("speaking");
-            }
+            this.handleAssistantOutput({ text: msg.payload.text });
           }
           this.updateMetrics();
           return;
@@ -405,6 +567,8 @@ class CushionVoiceAgent {
       this.flowchartEl.textContent = "Mermaid diagrams will render here if the assistant sends one.";
       this.flowchartEl.classList.add("empty");
     }
+
+    this.lastFlowchartSourceText = "";
 
     if (this.logEl) {
       this.logEl.textContent = "Voice transport and token events will appear here.";

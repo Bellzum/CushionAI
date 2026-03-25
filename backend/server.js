@@ -20,6 +20,23 @@ if (!VOCAL_BRIDGE_API_KEY) {
 
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
+function extractJsonObject(text) {
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const match = String(text).match(/\{[\s\S]*\}/);
+    if (!match) return null;
+
+    try {
+      return JSON.parse(match[0]);
+    } catch (nestedError) {
+      return null;
+    }
+  }
+}
+
 app.get("/api/voice-token", async (req, res) => {
   try {
     const resp = await fetch(`${VOCAL_BRIDGE_URL}/api/v1/token`, {
@@ -66,18 +83,55 @@ app.post("/api/chat", async (req, res) => {
     let answer = responseText;
     let mermaid = "";
 
-    try {
-      const parsed = JSON.parse(responseText);
+    const parsed = extractJsonObject(responseText);
+    if (parsed) {
       answer = parsed.answer || responseText;
       mermaid = parsed.mermaid || "";
-    } catch (e) {
-      // If not JSON, use as answer
     }
 
     res.json({ answer, mermaid });
   } catch (error) {
     console.error("Chat error", error);
     res.status(500).json({ error: "Failed to process chat" });
+  }
+});
+
+app.post("/api/flowchart", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ error: "Text is required" });
+    }
+
+    if (!OPENAI_API_KEY) {
+      return res.status(500).json({ error: "OPENAI_API_KEY env var is required" });
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            'Convert assistant text into a Mermaid flowchart when the text describes a process or ordered steps. Respond only with JSON: {"mermaid":"graph LR; A[Start] --> B[End]"} . If the text does not describe a process, respond with {"mermaid":""}. Do not include markdown fences.'
+        },
+        {
+          role: "user",
+          content: text
+        }
+      ],
+      max_tokens: 400,
+      temperature: 0.2
+    });
+
+    const responseText = completion.choices[0]?.message?.content || "";
+    const parsed = extractJsonObject(responseText);
+    const mermaid = typeof parsed?.mermaid === "string" ? parsed.mermaid.trim() : "";
+
+    return res.json({ mermaid });
+  } catch (error) {
+    console.error("Flowchart error", error);
+    return res.status(500).json({ error: "Failed to generate flowchart" });
   }
 });
 

@@ -299,6 +299,12 @@
       font-size: 13px;
     }
 
+    .panel-head-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .script-log,
     .event-log,
     .response,
@@ -525,7 +531,10 @@
           <section>
             <div class="panel-head">
               <h2>Assistant Response</h2>
-              <span>Most recent spoken answer</span>
+              <div class="panel-head-actions">
+                <span>Most recent spoken answer</span>
+                <button id="generate-flowchart" class="secondary">Generate Flowchart</button>
+              </div>
             </div>
             <div id="response" class="response empty">Assistant response will appear here.</div>
           </section>
