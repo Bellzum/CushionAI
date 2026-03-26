@@ -21,12 +21,15 @@
 - Click Connect, allow microphone access
 - Should log `Connected to CushionAI voice room`
 - Should receive audio on `TrackSubscribed`
+- Assistant replies should appear in `Assistant Response`
+- The `Visualization` panel should populate automatically from the latest assistant transcript through OpenAI
 
 ## Notes
 
 - Keep `vb_...` secret, do not commit.
 - Token endpoint calls Vocal Bridge API and returns LiveKit token.
 - Use `client_actions` data channel events for app<->agent integration.
+- `POST /api/visualization` converts the latest assistant transcript into a structured visual type on the same screen
 
 ## Docker Compose (optional)
 

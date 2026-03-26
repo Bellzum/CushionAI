@@ -1,8 +1,5 @@
 console.log("app.js loaded");
 import { Room, RoomEvent, Track } from "livekit-client";
-import mermaid from "mermaid";
-
-mermaid.initialize({ startOnLoad: false, theme: 'dark' });
 
 class CushionVoiceAgent {
   constructor() {
@@ -17,7 +14,7 @@ class CushionVoiceAgent {
     this.hasRemoteAudio = false;
     this.lastAssistantText = "";
     this.lastAssistantTimestamp = 0;
-    this.lastFlowchartSourceText = "";
+    this.lastVisualizationSourceText = "";
 
     this.statusEl = document.getElementById("status");
     this.logEl = document.getElementById("log");
@@ -27,13 +24,13 @@ class CushionVoiceAgent {
     this.requestStatusBtn = document.getElementById("request-status");
     this.notifyLoadedBtn = document.getElementById("notify-loaded");
     this.clearLogBtn = document.getElementById("clear-log");
-    this.generateFlowchartBtn = document.getElementById("generate-flowchart");
+    this.generateVisualizationBtn = document.getElementById("generate-visualization");
 
     this.avatarEl = document.getElementById("avatar");
     this.avatarStatusEl = document.getElementById("avatar-status");
     this.scriptLogEl = document.getElementById("scriptLog");
     this.responseEl = document.getElementById("response");
-    this.flowchartEl = document.getElementById("flowchart");
+    this.visualizationEl = document.getElementById("visualization");
     this.metricConnectionEl = document.getElementById("metric-connection");
     this.metricTranscriptEl = document.getElementById("metric-transcript");
     this.metricActionEl = document.getElementById("metric-action");
@@ -47,7 +44,7 @@ class CushionVoiceAgent {
     this.requestStatusBtn.addEventListener("click", () => this.sendClientAction("manager_requested_status", { source: "dashboard" }));
     this.notifyLoadedBtn.addEventListener("click", () => this.sendClientAction("dashboard_loaded", { source: "frontend", behavior: "notify" }));
     this.clearLogBtn.addEventListener("click", () => this.clearPanels());
-    this.generateFlowchartBtn.addEventListener("click", () => this.generateFlowchartFromLatestResponse());
+    this.generateVisualizationBtn.addEventListener("click", () => this.generateVisualizationFromLatestResponse());
 
     this.setupEventHandlers();
     this.updateUI();
@@ -141,58 +138,32 @@ class CushionVoiceAgent {
       this.speakText(data.text);
     }
 
-    const mermaidSource = data.mermaid || this.extractMermaidFromText(data.text);
-
-    if (mermaidSource) {
-      await this.renderFlowchart(mermaidSource);
-      return;
-    }
-
     if (data.text) {
-      await this.generateFlowchartFromAssistantText(data.text);
+      await this.generateVisualizationFromAssistantText(data.text);
     }
   }
 
-  async renderFlowchart(mermaidSource) {
-    try {
-      const { svg } = await mermaid.render(`flowchart-svg-${Date.now()}`, mermaidSource);
-      this.flowchartEl.classList.remove("empty");
-      this.flowchartEl.innerHTML = svg;
-    } catch (err) {
-      console.warn("Mermaid render failed", err);
-      this.flowchartEl.classList.remove("empty");
-      this.flowchartEl.textContent = "Unable to render Mermaid diagram for this response.";
-    }
-  }
-
-  async generateFlowchartFromAssistantText(text) {
+  async generateVisualizationFromAssistantText(text) {
     const sourceText = String(text || "").trim();
-    if (!sourceText || sourceText === this.lastFlowchartSourceText) {
+    if (!sourceText || sourceText === this.lastVisualizationSourceText) {
       return;
     }
 
-    const localMermaid = this.extractMermaidFromText(sourceText);
-    if (localMermaid) {
-      this.lastFlowchartSourceText = sourceText;
-      await this.renderFlowchart(localMermaid);
-      return;
-    }
-
-    this.lastFlowchartSourceText = sourceText;
-    this.flowchartEl.classList.remove("empty");
-    this.flowchartEl.textContent = "Generating flowchart from assistant response...";
+    this.lastVisualizationSourceText = sourceText;
+    this.visualizationEl.classList.remove("empty");
+    this.visualizationEl.innerHTML = '<div class="viz-status">Generating visualization from assistant response...</div>';
 
     try {
-      const response = await fetch("/api/flowchart", {
+      const response = await fetch("/api/visualization", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ text: sourceText })
+        body: JSON.stringify({ transcript: sourceText })
       });
 
       if (!response.ok) {
-        let errorMessage = `Flowchart API failed: ${response.status}`;
+        let errorMessage = `Visualization API failed: ${response.status}`;
         try {
           const errorBody = await response.json();
           if (errorBody?.error) {
@@ -204,97 +175,158 @@ class CushionVoiceAgent {
         throw new Error(errorMessage);
       }
 
-      const { mermaid: generatedMermaid } = await response.json();
-      if (generatedMermaid) {
-        await this.renderFlowchart(generatedMermaid);
-        return;
-      }
-
-      this.flowchartEl.classList.add("empty");
-      this.flowchartEl.textContent = "No flowchart could be derived from this response.";
+      const visualization = await response.json();
+      this.renderVisualization(visualization);
     } catch (error) {
-      console.error("generateFlowchartFromAssistantText error", error);
-      this.flowchartEl.classList.add("empty");
-      this.flowchartEl.textContent = `Flowchart generation failed: ${error?.message || "Unknown error"}`;
+      console.error("generateVisualizationFromAssistantText error", error);
+      this.visualizationEl.classList.add("empty");
+      this.visualizationEl.textContent = `Visualization generation failed: ${error?.message || "Unknown error"}`;
     }
   }
 
-  async generateFlowchartFromLatestResponse() {
+  async generateVisualizationFromLatestResponse() {
     const latestResponse = String(this.responseEl?.textContent || "").trim();
     if (!latestResponse || latestResponse === "Assistant response will appear here.") {
-      this.log("No assistant response available for flowchart generation.", "warn");
+      this.log("No assistant response available for visualization generation.", "warn");
       return;
     }
 
-    this.log("Generating flowchart from latest assistant response...");
-    this.state.lastAction = "Generate Flowchart";
+    this.log("Generating visualization from latest assistant response...");
+    this.state.lastAction = "Generate Visualization";
     this.updateMetrics();
-    this.lastFlowchartSourceText = "";
-    await this.generateFlowchartFromAssistantText(latestResponse);
+    this.lastVisualizationSourceText = "";
+    await this.generateVisualizationFromAssistantText(latestResponse);
   }
 
-  extractMermaidFromText(text) {
-    const rawText = String(text || "").trim();
-    if (!rawText) return "";
+  renderVisualization(visualization) {
+    if (!this.visualizationEl) return;
 
-    const fencedMatch = rawText.match(/```mermaid\s*([\s\S]*?)```/i);
-    if (fencedMatch?.[1]) {
-      return fencedMatch[1].trim();
+    const title = this.escapeHtml(visualization?.title || "Visualization");
+    const description = this.escapeHtml(visualization?.description || "");
+    const type = this.escapeHtml(visualization?.visualType || "unknown");
+    const data = visualization?.data || {};
+
+    const body = this.renderVisualizationBody(type, data);
+    this.visualizationEl.classList.remove("empty");
+    this.visualizationEl.innerHTML = `
+      <div class="viz-shell">
+        <div class="viz-header">
+          <div>
+            <div class="viz-type">${type}</div>
+            <h3>${title}</h3>
+          </div>
+        </div>
+        <p class="viz-description">${description}</p>
+        <div class="viz-body">${body}</div>
+      </div>
+    `;
+  }
+
+  renderVisualizationBody(type, data) {
+    if (type === "flowchart") {
+      return (data.nodes || [])
+        .map((node, index, list) => `
+          <div class="viz-flow-item">
+            <div class="viz-card">
+              <div class="viz-card-head">
+                <strong>${this.escapeHtml(node.label || `Node ${index + 1}`)}</strong>
+                <span>${this.escapeHtml(node.type || "process")}</span>
+              </div>
+              ${node.detail ? `<p>${this.escapeHtml(node.detail)}</p>` : ""}
+            </div>
+            ${index < list.length - 1 ? '<div class="viz-arrow">↓</div>' : ""}
+          </div>
+        `)
+        .join("");
     }
 
-    const normalized = rawText
-      .replace(/\*\*/g, "")
-      .replace(/[“”]/g, "\"")
-      .replace(/[‘’]/g, "'")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!normalized.includes("->") && !normalized.includes("→")) {
-      return "";
+    if (type === "knowledge_map") {
+      return (data.items || [])
+        .map((item) => `
+          <div class="viz-card viz-knowledge">
+            <div class="viz-card-head">
+              <code>${this.escapeHtml(item.constant || item.id || "item")}</code>
+              <span>${this.escapeHtml(item.category || "detail")}</span>
+            </div>
+            <p>${this.escapeHtml(item.meaning || "")}</p>
+            ${item.risk ? `<small>${this.escapeHtml(item.risk)}</small>` : ""}
+          </div>
+        `)
+        .join("");
     }
 
-    const arrowMatches = normalized.match(/[^.?!\n]+(?:->|→)[^.?!\n]+/g) || [];
-    const candidate = arrowMatches.sort((a, b) => b.length - a.length)[0] || normalized;
-
-    const cleanedCandidate = candidate
-      .replace(/^[^A-Za-z0-9(]*/, "")
-      .replace(/\b(here'?s|here is|flow|process|basically|loop)\b/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const parts = cleanedCandidate
-      .split(/(?:->|→)/)
-      .map((part) =>
-        part
-          .replace(/^[^A-Za-z0-9(]+|[^A-Za-z0-9)]*$/g, "")
-          .replace(/\b(and|then)\b$/gi, "")
-          .trim()
-      )
-      .filter(Boolean);
-
-    if (parts.length < 2) {
-      return "";
+    if (type === "risk_matrix") {
+      return (data.risks || [])
+        .map((risk) => `
+          <div class="viz-card">
+            <div class="viz-pill-row">
+              <span class="viz-pill">L ${this.escapeHtml(risk.likelihood || "medium")}</span>
+              <span class="viz-pill">I ${this.escapeHtml(risk.impact || "medium")}</span>
+            </div>
+            <strong>${this.escapeHtml(risk.name || "Risk")}</strong>
+            <p>${this.escapeHtml(risk.note || "")}</p>
+          </div>
+        `)
+        .join("");
     }
 
-    const uniqueParts = [];
-    for (const part of parts) {
-      const previous = uniqueParts[uniqueParts.length - 1];
-      if (!previous || previous.toLowerCase() !== part.toLowerCase()) {
-        uniqueParts.push(part);
-      }
+    if (type === "layer_diagram") {
+      return (data.layers || [])
+        .map((layer) => `
+          <div class="viz-card">
+            <div class="viz-card-head">
+              <strong>${this.escapeHtml(layer.name || "Layer")}</strong>
+              <span>${this.escapeHtml(layer.language || "n/a")} / ${this.escapeHtml(layer.type || "n/a")}</span>
+            </div>
+            <p>${this.escapeHtml(layer.responsibility || "")}</p>
+          </div>
+        `)
+        .join("");
     }
 
-    if (uniqueParts.length < 2) {
-      return "";
+    if (type === "comparison") {
+      const before = (data.before || [])
+        .map((item) => `<div class="viz-card"><strong>${this.escapeHtml(item.aspect || "Before")}</strong><p>${this.escapeHtml(item.value || "")}</p></div>`)
+        .join("");
+      const after = (data.after || [])
+        .map((item) => `<div class="viz-card"><strong>${this.escapeHtml(item.aspect || "After")}</strong><p>${this.escapeHtml(item.value || "")}</p></div>`)
+        .join("");
+
+      return `
+        <div class="viz-compare">
+          <div><div class="viz-section-label">Before</div>${before}</div>
+          <div><div class="viz-section-label">After</div>${after}</div>
+        </div>
+      `;
     }
 
-    const nodes = uniqueParts.map((part, index) => {
-      const label = part.replace(/"/g, "'");
-      return `N${index}["${label}"]`;
-    });
+    if (type === "timeline") {
+      return (data.steps || [])
+        .map((step) => `
+          <div class="viz-timeline-item">
+            <div class="viz-step">${this.escapeHtml(String(step.step || "?"))}</div>
+            <div class="viz-card">
+              <div class="viz-card-head">
+                <strong>${this.escapeHtml(step.title || "Step")}</strong>
+                <span>${this.escapeHtml(step.status || "next")}</span>
+              </div>
+              <p>${this.escapeHtml(step.description || "")}</p>
+            </div>
+          </div>
+        `)
+        .join("");
+    }
 
-    const edges = nodes.slice(0, -1).map((node, index) => `${node} --> ${nodes[index + 1]}`);
-    return `graph LR\n${edges.join("\n")}`;
+    return `<pre>${this.escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  }
+
+  escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   speakText(text) {
@@ -363,7 +395,7 @@ class CushionVoiceAgent {
     this.sendBtn.disabled = loading || !connected;
     this.requestStatusBtn.disabled = loading || !connected;
     this.notifyLoadedBtn.disabled = loading || !connected;
-    this.generateFlowchartBtn.disabled = loading;
+    this.generateVisualizationBtn.disabled = loading;
 
     if (loading) {
       this.setStatus("connecting...", "warn");
@@ -466,9 +498,7 @@ class CushionVoiceAgent {
 
         if (msg.text) {
           this.addScriptEntry(msg.role || "assistant", msg.text);
-          if (msg.mermaid) {
-            this.handleAssistantOutput(msg);
-          }
+          this.handleAssistantOutput(msg);
         } else if (action) {
           console.log("Action event:", action, msg.payload);
           this.log(`Received client action: ${action}`, "success");
@@ -563,12 +593,12 @@ class CushionVoiceAgent {
       this.responseEl.classList.add("empty");
     }
 
-    if (this.flowchartEl) {
-      this.flowchartEl.textContent = "Mermaid diagrams will render here if the assistant sends one.";
-      this.flowchartEl.classList.add("empty");
+    if (this.visualizationEl) {
+      this.visualizationEl.textContent = "OpenAI visualizations will render here after the assistant responds.";
+      this.visualizationEl.classList.add("empty");
     }
 
-    this.lastFlowchartSourceText = "";
+    this.lastVisualizationSourceText = "";
 
     if (this.logEl) {
       this.logEl.textContent = "Voice transport and token events will appear here.";

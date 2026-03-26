@@ -305,10 +305,10 @@
       gap: 10px;
     }
 
-    .script-log,
-    .event-log,
-    .response,
-    .flowchart {
+      .script-log,
+      .event-log,
+      .response,
+      .visualization {
       border-radius: 18px;
       border: 1px solid var(--line);
       background: var(--panel-strong);
@@ -338,7 +338,7 @@
     }
 
     .response,
-    .flowchart {
+    .visualization {
       padding: 18px;
     }
 
@@ -351,16 +351,119 @@
     .response.empty,
     .script-log.empty,
     .event-log.empty,
-    .flowchart.empty {
+    .visualization.empty {
       color: var(--muted);
     }
 
-    .flowchart {
+    .visualization {
       min-height: 260px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       overflow: auto;
+    }
+
+    .viz-shell {
+      display: grid;
+      gap: 18px;
+    }
+
+    .viz-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .viz-header h3 {
+      margin: 6px 0 0;
+      font-size: 22px;
+    }
+
+    .viz-type,
+    .viz-section-label,
+    .viz-card-head span,
+    .viz-pill {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .viz-description {
+      margin: 0;
+      color: #cfe0ef;
+      line-height: 1.7;
+    }
+
+    .viz-body,
+    .viz-compare {
+      display: grid;
+      gap: 12px;
+    }
+
+    .viz-card {
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(8, 17, 29, 0.64);
+      padding: 14px;
+    }
+
+    .viz-card p,
+    .viz-card small,
+    .viz-status {
+      margin: 8px 0 0;
+      color: #d9e8f5;
+      line-height: 1.6;
+    }
+
+    .viz-card-head,
+    .viz-pill-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .viz-flow-item {
+      display: grid;
+      gap: 10px;
+    }
+
+    .viz-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .viz-pill-row {
+      justify-content: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .viz-pill {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+    }
+
+    .viz-compare {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .viz-timeline-item {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .viz-step {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      background: rgba(22, 35, 54, 0.92);
+      font-weight: 700;
     }
 
     .log-error {
@@ -423,7 +526,8 @@
       }
 
       .metrics,
-      .action-grid {
+      .action-grid,
+      .viz-compare {
         grid-template-columns: 1fr;
       }
     }
@@ -533,7 +637,7 @@
               <h2>Assistant Response</h2>
               <div class="panel-head-actions">
                 <span>Most recent spoken answer</span>
-                <button id="generate-flowchart" class="secondary">Generate Flowchart</button>
+                <button id="generate-visualization" class="secondary">Generate Visual</button>
               </div>
             </div>
             <div id="response" class="response empty">Assistant response will appear here.</div>
@@ -541,10 +645,10 @@
 
           <section>
             <div class="panel-head">
-              <h2>Flowchart</h2>
-              <span>Rendered Mermaid output when available</span>
+              <h2>Visualization</h2>
+              <span>OpenAI selects the best visual for the latest assistant reply</span>
             </div>
-            <div id="flowchart" class="flowchart empty">Mermaid diagrams will render here if the assistant sends one.</div>
+            <div id="visualization" class="visualization empty">OpenAI visualizations will render here after the assistant responds.</div>
           </section>
         </div>
       </main>

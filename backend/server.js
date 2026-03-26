@@ -135,6 +135,53 @@ app.post("/api/flowchart", async (req, res) => {
   }
 });
 
+app.post("/api/visualization", async (req, res) => {
+  try {
+    const { transcript } = req.body;
+    if (!transcript || typeof transcript !== "string") {
+      return res.status(400).json({ error: "Transcript is required" });
+    }
+
+    if (!OPENAI_API_KEY) {
+      return res.status(500).json({ error: "OPENAI_API_KEY env var is required" });
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            'You generate visualization JSON for a live voice support dashboard. Respond only with JSON in this shape: {"visualType":"flowchart|knowledge_map|risk_matrix|layer_diagram|comparison|timeline","title":"short title","description":"one sentence","data":{}}. Choose flowchart for components or flows, knowledge_map for constants or hidden rules, risk_matrix for risks, layer_diagram for C++/Python layers, comparison for before/after states, and timeline for steps or sequence. Keep fields concise and practical.'
+        },
+        {
+          role: "user",
+          content: `Transcript:\n${transcript}\n\nReturn only JSON.`
+        }
+      ],
+      max_tokens: 900,
+      temperature: 0.2
+    });
+
+    const responseText = completion.choices[0]?.message?.content || "";
+    const parsed = extractJsonObject(responseText);
+
+    if (!parsed?.visualType || !parsed?.title || !parsed?.description) {
+      return res.status(502).json({ error: "Invalid visualization payload from model" });
+    }
+
+    return res.json({
+      visualType: parsed.visualType,
+      title: parsed.title,
+      description: parsed.description,
+      data: parsed.data || {}
+    });
+  } catch (error) {
+    console.error("Visualization error", error);
+    return res.status(500).json({ error: "Failed to generate visualization" });
+  }
+});
+
 app.get("/api/avatar", async (req, res) => {
   try {
     const response = await openai.images.generate({
